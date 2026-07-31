@@ -8,7 +8,6 @@ Oh My Pi Stats 中文本地化插件，提供 `/stats-zh` 指令和仅监听本�
 - 默认打开 `http://localhost:3947/`
 - 汉化概览、请求、错误、模型、提供商、工具、费用、行为、项目和收益页面
 - 动态翻译更新时间、相对时间、状态和表格字段
-- Token 数量使用 `K`、`M`，不使用“万”“亿”
 - 优先复用已经运行的 `http://localhost:3847/`
 - 3847 未运行时自动启动随插件安装的 Stats 后端
 - 所有服务仅绑定 `127.0.0.1`
@@ -17,6 +16,14 @@ Oh My Pi Stats 中文本地化插件，提供 `/stats-zh` 指令和仅监听本�
 
 - Oh My Pi 17.2.1 或更高版本
 - Bun 1.3.14 或更高版本
+
+## 从 npm 安装
+
+使用 npm 安装：
+
+```bash
+omp plugin install omp-stats-zh-plugin
+```
 
 ## 从压缩包安装
 
@@ -34,20 +41,6 @@ omp plugin link .
 
 ```text
 /stats-zh
-```
-
-## 从 npm 或 Git 仓库安装
-
-发布到 npm 后：
-
-```bash
-omp plugin install omp-stats-zh-plugin
-```
-
-托管到 GitHub 后也可以直接安装：
-
-```bash
-omp plugin install github:YOUR_NAME/omp-stats-zh-plugin
 ```
 
 ## 本地开发或目录安装
