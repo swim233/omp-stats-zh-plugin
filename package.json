@@ -1,0 +1,34 @@
+{
+  "name": "omp-stats-zh-plugin",
+  "version": "1.0.0",
+  "description": "Chinese-localized Oh My Pi statistics dashboard with /stats-zh",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "oh-my-pi",
+    "omp",
+    "stats",
+    "dashboard",
+    "chinese",
+    "localization"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "dependencies": {
+    "@oh-my-pi/omp-stats": "^17.2.1"
+  },
+  "omp": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
