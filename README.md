@@ -1,5 +1,8 @@
 # omp-stats-zh-plugin
 
+<img width="2257" height="1346" alt="image" src="https://github.com/user-attachments/assets/6e17d7e4-2640-4c3a-95f0-71a9e21abf2e" />
+
+
 Oh My Pi Stats 中文本地化插件，提供 `/stats-zh` 指令和仅监听本机的中文统计面板。
 
 ## 功能
