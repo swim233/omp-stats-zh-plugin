@@ -14,7 +14,7 @@ Oh My Pi Stats 中文本地化插件，提供 `/stats-zh` 指令和仅监听本�
 
 ## 要求
 
-- Oh My Pi 17.2.1 或更高版本
+- Oh My Pi 18.0.4 或更高版本
 - Bun 1.3.14 或更高版本
 
 ## 从 npm 安装
@@ -31,7 +31,7 @@ OMP 会把本地路径作为目录插件链接，因此先解压 npm 压缩包�
 
 ```bash
 mkdir omp-stats-zh
-tar -xzf omp-stats-zh-plugin-1.0.0.tgz -C omp-stats-zh
+tar -xzf omp-stats-zh-plugin-1.1.2.tgz -C omp-stats-zh
 cd omp-stats-zh/package
 bun install --production
 omp plugin link .

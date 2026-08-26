@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 const LOCAL_HOST = "127.0.0.1";
@@ -13,10 +14,13 @@ interface ProxyServer {
 	stop(closeActiveConnections?: boolean): void;
 }
 
+interface UpstreamProcess {
+	kill(): void;
+}
+
 let proxyServer: ProxyServer | undefined;
 let upstreamUrl: string | undefined;
-let ownedUpstream: ProxyServer | undefined;
-let closeUpstreamDb: (() => void) | undefined;
+let ownedUpstreamProcess: UpstreamProcess | undefined;
 let startPromise: Promise<void> | undefined;
 
 const translations: Record<string, string> = {
@@ -31,6 +35,13 @@ const translations: Record<string, string> = {
 	"Tools": "工具",
 	"Costs": "费用",
 	"Behavior": "行为",
+	"API-equivalent estimate": "API 等效费用估算",
+	"Average estimate / Day": "日均 API 等效费用估算",
+	"Daily API-equivalent estimate": "每日 API 等效费用估算",
+	"Public API rate-card value over time": "按公共 API 价目表估算的费用趋势",
+	"No API-equivalent estimate data available": "暂无 API 等效费用估算数据",
+	"Efficiency": "效率",
+	"N/A": "不适用",
 	"Projects": "项目",
 	"Gain": "收益",
 	"All": "全部",
@@ -41,10 +52,29 @@ const translations: Record<string, string> = {
 	"System theme (click to switch)": "跟随系统主题（点击切换）",
 	"Light theme (click to switch)": "浅色主题（点击切换）",
 	"Dark theme (click to switch)": "深色主题（点击切换）",
+	"System theme — click to switch": "跟随系统主题——点击切换",
+	"Light theme — click to switch": "浅色主题——点击切换",
+	"Dark theme — click to switch": "深色主题——点击切换",
+	"Navigation menu": "导航菜单",
+	"Close navigation menu": "关闭导航菜单",
+	"Open navigation menu": "打开导航菜单",
+	"Select time range": "选择时间范围",
+	"No data available": "暂无数据",
+	"No friction signal data available": "暂无摩擦信号数据",
+	"Failed to load data": "数据加载失败",
+	"Retry": "重试",
+	"less than a minute ago": "不到 1 分钟前",
 	"TOTAL COST": "总费用",
 	"REQUESTS": "请求数",
 	"CACHE RATE": "缓存命中率",
 	"ERROR RATE": "错误率",
+	"Cache Savings": "缓存节省率",
+	"Cache savings": "缓存节省率",
+	"Prompt-input cost saved versus billing the same tokens uncached; cache writes can make this negative": "与相同 Token 全部按未缓存输入计费相比节省的提示词输入费用；缓存写入可能使该值为负",
+	"Prompt input served from cache: cache reads / (uncached input + cache reads)": "从缓存读取的提示词输入占比：缓存读取 /（未缓存输入 + 缓存读取）",
+	"Conversation input not served from cache": "未从缓存提供的对话输入",
+	"Conversation input read from the prompt cache": "从提示词缓存读取的对话输入",
+	"Uncached input + cache reads + cache writes + output": "未缓存输入 + 缓存读取 + 缓存写入 + 输出",
 	"UNCACHED INPUT": "未缓存输入",
 	"CACHE READ": "缓存读取",
 	"OUTPUT TOKENS": "输出 Token",
@@ -69,6 +99,23 @@ const translations: Record<string, string> = {
 	"Up to 50 most recent requests processed by OMP": "OMP 最近处理的最多 50 个请求",
 	"Recent Errors": "近期错误",
 	"Up to 50 most recent failed requests in the stats database": "统计数据库中最近失败的最多 50 个请求",
+	"Request details": "请求详情",
+	"Request Details": "请求详情",
+	"Close request details": "关闭请求详情",
+	"Failed to load request details": "请求详情加载失败",
+	"Output Payload": "输出载荷",
+	"Raw Request Metadata": "原始请求元数据",
+	"Error": "错误",
+	"Premium": "高级请求",
+	"Total Tokens": "Token 总量",
+	"Throughput": "吞吐量",
+	"tokens/second": "Token/秒",
+	"Copied to clipboard": "已复制到剪贴板",
+	"Copy JSON to clipboard": "将 JSON 复制到剪贴板",
+	"Copied": "已复制",
+	"Copy": "复制",
+	"▶ Show": "▶ 展开",
+	"▼ Hide": "▼ 收起",
 	"MODEL": "模型",
 	"TIME": "时间",
 	"TOKENS": "Token",
@@ -91,10 +138,12 @@ const translations: Record<string, string> = {
 	"TTFT": "首字延迟",
 	"Provider Totals": "提供商汇总",
 	"Token, request, and cost totals per provider over the active range": "当前时间范围内各提供商的 Token、请求和费用汇总",
+	"Token, request, and API-equivalent estimates over the active range": "当前时间范围内各提供商的 Token、请求和 API 等效费用估算汇总",
 	"PROVIDER": "提供商",
 	"SHARE": "占比",
 	"Burn by Provider": "按提供商统计消耗",
 	"Stacked token/cost burn per provider over time": "各提供商 Token 与费用消耗随时间的堆叠趋势",
+	"Stacked token or API-equivalent estimate burn over time": "Token 或 API 等效费用估算随时间的堆叠消耗趋势",
 	"Tokens": "Token",
 	"Cost": "费用",
 	"Peak Burn Hours": "消耗高峰时段",
@@ -109,11 +158,19 @@ const translations: Record<string, string> = {
 	"EXHAUSTIONS": "耗尽次数",
 	"Window Utilization": "窗口利用率",
 	"Latest recorded limit utilization per account and window — red bars are exhausted, amber above 80%": "各账号与窗口最近记录的额度利用率——红色表示已耗尽，琥珀色表示超过 80%",
+	"Subscription-window equivalents consumed in range (sum of used-fraction increases across accounts)": "当前范围内消耗的订阅窗口等值数（各账号已用比例增量之和）",
+	"Provider tokens burned in range ÷ windows burned — what one full window is worth": "当前范围内提供商消耗的 Token ÷ 已消耗窗口数——一个完整窗口对应的 Token 量",
+	"Peak of summed used fraction across accounts at any sampled instant": "任一采样时刻各账号已用比例之和的峰值",
+	"Accounts needed to keep peak demand under 90% of fleet capacity": "将峰值需求控制在账号池容量 90% 以下所需的账号数",
+	"No usage snapshots recorded yet — they accumulate whenever usage is fetched (TUI footer, /usage, omp usage)": "暂无用量快照——每次获取用量时都会累积记录（TUI 底栏、/usage、omp usage）",
+	"Used": "已使用",
 	"Tool Usage": "工具使用情况",
 	"Tokens/cost are the invoking turns' real provider usage, split across each turn's tool calls": "Token 与费用取自调用轮次的真实提供商用量，并分摊到该轮的各次工具调用",
+	"Tokens and API-equivalent estimates are split from invoking turns across each turn's tool calls": "调用轮次的 Token 和 API 等效费用估算会分摊到该轮的各次工具调用",
 	"TOOL CALLS": "工具调用数",
 	"TOOLS USED": "已使用工具数",
 	"ATTRIBUTED COST": "归因费用",
+	"Attributed API-equivalent estimate": "归因 API 等效费用估算",
 	"ATTRIBUTED TOKENS": "归因 Token",
 	"ATTRIBUTED OUTPUT": "归因输出 Token",
 	"RESULT TEXT": "结果文本",
@@ -126,8 +183,13 @@ const translations: Record<string, string> = {
 	"CALLS": "调用数",
 	"ATTR. TOKENS": "归因 Token",
 	"ATTR. COST": "归因费用",
+	"ATTR. API-EQUIVALENT ESTIMATE": "归因 API 等效费用估算",
+	"Attr. API-equivalent estimate": "归因 API 等效费用估算",
 	"LAST USED": "最近使用",
 	"Which models call which tools": "各模型调用工具的情况",
+	"Invoking turns' total tokens, split across each turn's calls": "调用轮次的 Token 总量，并分摊到该轮的各次调用",
+	"Characters of tool-result text fed back into context": "回填到上下文的工具结果文本字符数",
+	"Err": "错误",
 	"User Messages": "用户消息",
 	"in range": "当前范围内",
 	"Yelling (CAPS)": "大写喊叫",
@@ -146,6 +208,22 @@ const translations: Record<string, string> = {
 	"Frustration": "挫败",
 	"Behavior Signals by Model": "按模型统计行为信号",
 	"Rates are per user message": "比率按每条用户消息计算",
+	"Profanity as % of user messages per day": "每日粗俗用语信号占用户消息的百分比",
+	"Anguish as % of user messages per day": "每日痛苦信号占用户消息的百分比",
+	"Negation as % of user messages per day": "每日否定信号占用户消息的百分比",
+	"Repetition as % of user messages per day": "每日重复信号占用户消息的百分比",
+	"Blame as % of user messages per day": "每日责备信号占用户消息的百分比",
+	"Frustration as % of user messages per day": "每日挫败信号占用户消息的百分比",
+	"Anguish (!!!, nooo, ugh, dude, ':(')": "痛苦（!!!、nooo、ugh、dude、':('）",
+	"Negation (no/nope/wrong, makes no sense)": "否定（no/nope/wrong、makes no sense）",
+	"Repetition (i meant, still doesnt)": "重复（i meant、still doesnt）",
+	"Blame (you didnt, why did you, stop X-ing)": "责备（you didnt、why did you、stop X-ing）",
+	"Frustration (neg + rep + blame)": "挫败（否定 + 重复 + 责备）",
+	"All signals combined": "所有信号合计",
+	"Anguish (!!!, nooo, dude, ..)": "痛苦（!!!、nooo、dude、..）",
+	"Negation (no/nope/wrong)": "否定（no/nope/wrong）",
+	"Blame (you didnt, stop X-ing)": "责备（you didnt、stop X-ing）",
+	"Avg chars / msg": "平均字符数/条消息",
 	"MESSAGES": "消息数",
 	"CAPS %": "大写占比",
 	"PROFANITY %": "粗俗用语占比",
@@ -169,6 +247,10 @@ const translations: Record<string, string> = {
 	"Savings Over Time": "节省趋势",
 	"Daily token savings": "每日 Token 节省量",
 	"No time series data yet": "暂无时间序列数据",
+	"Project": "项目",
+	"All projects": "全部项目",
+	"(unknown)": "（未知）",
+	"所有信号合计 as % of user messages per day": "每日所有信号合计占用户消息的百分比",
 	"Total Cost": "总费用",
 	"Cache Rate": "缓存命中率",
 	"Error Rate": "错误率",
@@ -246,16 +328,30 @@ const translationScript = String.raw`(() => {
     [/^about (\d+) days? ago$/i, "约 $1 天前"],
     [/^(\d+) days? ago$/i, "$1 天前"],
     [/^(\d+) days?$/i, "$1 天"],
+    [/^(\d+) hours?$/i, "$1 小时"],
     [/^(\d+(?:\.\d+)?) req$/i, "$1 次请求"],
-    [/^(\d+(?:\.\d+)?(?:万|亿)?) tok$/i, "$1 Token"],
-    [/^(\d+(?:\.\d+)?(?:万|亿)?) chars$/i, "$1 字符"],
+    [/^(\d+(?:\.\d+)?(?:[KMB]|万|亿)?) tok$/i, "$1 Token"],
+    [/^(\d+(?:\.\d+)?(?:[KMB]|万|亿)?) chars$/i, "$1 字符"],
     [/^(\d+(?:\.\d+)?) hits?$/i, "$1 次命中"],
+    [/^(.+) \/ msg$/i, "$1 / 条消息"],
+    [/^(.+) in · (.+) out$/i, "$1 输入 · $2 输出"],
+    [/^in ·$/i, "输入 ·"],
+    [/^out$/i, "输出"],
+    [/^\(have (\d+)\)$/i, "（现有 $1 个）"],
+    [/^Input (.+) · Output (.+) · Cache read (.+) · Cache write (.+)$/i, "输入 $1 · 输出 $2 · 缓存读取 $3 · 缓存写入 $4"],
+    [/^(.+) as % of user messages per day$/i, "每日$1信号占用户消息的百分比"],
+    [/^unknown$/i, "未知"],
     [/^Total spent: (.+)$/i, "总支出：$1"],
     [/^Share of requests over the last (\d+) hours$/i, "过去 $1 小时各模型的请求占比"],
     [/^Share of requests over the last (\d+) days$/i, "过去 $1 天各模型的请求占比"],
     [/^Tool calls over the last (\d+) hours, stacked by tool$/i, "过去 $1 小时各工具调用量的堆叠趋势"],
     [/^Tool calls over the last (\d+) days, stacked by tool$/i, "过去 $1 天各工具调用量的堆叠趋势"],
     [/^Token burn by local hour of day — peak at (.+)$/i, "按本地时段统计 Token 消耗——峰值在 $1"],
+    [/^Excludes (\d[\d,]*) unpriced subscription requests?$/i, "不含 $1 次未定价订阅请求"],
+    [/^API-equivalent estimate: (.+)$/i, "API 等效费用估算：$1"],
+    [/^Public API rate-card value over time; excludes (\d[\d,]*) unpriced subscription requests?$/i, "按公共 API 价目表估算的费用趋势；不含 $1 次未定价订阅请求"],
+    [/^Token, request, and API-equivalent estimates; excludes (\d[\d,]*) unpriced subscription requests?$/i, "Token、请求和 API 等效费用估算；不含 $1 次未定价订阅请求"],
+    [/^API-equivalent estimates over time; excludes (\d[\d,]*) unpriced subscription requests?$/i, "API 等效费用估算趋势；不含 $1 次未定价订阅请求"],
   ];
 
   function translate(value) {
@@ -267,9 +363,9 @@ const translationScript = String.raw`(() => {
     const compactNumber = core.match(/^(-?\d+(?:\.\d+)?)(万|亿)(.*)$/);
     if (compactNumber) {
       const absolute = Number(compactNumber[1]) * (compactNumber[2] === "亿" ? 100_000_000 : 10_000);
-      const divisor = absolute >= 1_000_000 ? 1_000_000 : 1_000;
-      const unit = divisor === 1_000_000 ? "M" : "K";
-      const amount = (absolute / divisor).toFixed(2).replace(/\.?0+$/, "");
+      const divisor = absolute >= 1_000_000_000 ? 1_000_000_000 : absolute >= 1_000_000 ? 1_000_000 : 1_000;
+      const unit = divisor === 1_000_000_000 ? "B" : divisor === 1_000_000 ? "M" : "K";
+      const amount = (absolute / divisor).toFixed(1);
       const suffix = compactNumber[3].replace(/\btok\b/i, "Token").replace(/\bchars\b/i, "字符");
       result = amount + unit + suffix;
     } else {
@@ -340,6 +436,10 @@ const translationScript = String.raw`(() => {
 
 function patchBundle(source: string): string {
 	let patched = source;
+	patched = patched.replace(
+		/\.toLocaleString\(\s*(?:void 0|undefined)\s*,\s*\{\s*notation\s*:\s*["']compact["']\s*\}\s*\)/g,
+		'.toLocaleString("en-US",{notation:"compact",minimumFractionDigits:1,maximumFractionDigits:1})',
+	);
 	for (const [english, chinese] of Object.entries(translations)) {
 		patched = patched.replaceAll(JSON.stringify(english), JSON.stringify(chinese));
 	}
@@ -357,12 +457,74 @@ async function isStatsDashboard(url: string): Promise<boolean> {
 	}
 }
 
+async function readDashboardUrl(
+	stdout: ReadableStream<Uint8Array>,
+	stderr: ReadableStream<Uint8Array>,
+	exited: Promise<number>,
+): Promise<string> {
+	const reader = stdout.getReader();
+	const decoder = new TextDecoder();
+	let output = "";
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) {
+			const exitCode = await exited;
+			const errorOutput = (await new Response(stderr).text()).trim();
+			throw new Error(`Stats 后端退出，状态码 ${exitCode}${errorOutput ? `：${errorOutput}` : ""}`);
+		}
+		output += decoder.decode(value, { stream: true });
+		const match = output.match(/Dashboard available at:\s+(https?:\/\/\S+)/);
+		if (match?.[1]) {
+			reader.releaseLock();
+			return match[1];
+		}
+		if (output.length > 16_384) output = output.slice(-16_384);
+	}
+}
+
+async function waitForDashboardUrl(
+	stdout: ReadableStream<Uint8Array>,
+	stderr: ReadableStream<Uint8Array>,
+	exited: Promise<number>,
+): Promise<string> {
+	const timeout = Promise.withResolvers<string>();
+	const timer = setTimeout(() => timeout.reject(new Error("Stats 后端启动超时")), 120_000);
+	try {
+		return await Promise.race([readDashboardUrl(stdout, stderr, exited), timeout.promise]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 async function startFallbackUpstream(): Promise<string> {
-	const stats = await import("@oh-my-pi/omp-stats");
-	await stats.syncAllSessions();
-	ownedUpstream = await stats.startServer(0);
-	closeUpstreamDb = stats.closeDb;
-	return `http://127.0.0.1:${ownedUpstream.port}`;
+	const bunPath = Bun.which("bun");
+	if (!bunPath) throw new Error("未找到 Bun 可执行文件");
+	const candidates = [
+		fileURLToPath(new URL("../node_modules/@oh-my-pi/omp-stats/src/index.ts", import.meta.url)),
+		fileURLToPath(new URL("../../@oh-my-pi/omp-stats/src/index.ts", import.meta.url)),
+	];
+	let statsEntry: string | undefined;
+	for (const candidate of candidates) {
+		if (await Bun.file(candidate).exists()) {
+			statsEntry = candidate;
+			break;
+		}
+	}
+	if (!statsEntry) throw new Error("未找到 @oh-my-pi/omp-stats 安装目录");
+	const child = Bun.spawn([bunPath, statsEntry, "--port", "0", "--host", LOCAL_HOST], {
+		stdin: "ignore",
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	ownedUpstreamProcess = child;
+	try {
+		return await waitForDashboardUrl(child.stdout, child.stderr, child.exited);
+	} catch (error) {
+		child.kill();
+		await child.exited;
+		ownedUpstreamProcess = undefined;
+		throw error;
+	}
 }
 
 async function resolveUpstream(): Promise<string> {
@@ -468,12 +630,8 @@ function stopServers(): void {
 	proxyServer?.stop(true);
 	proxyServer = undefined;
 	upstreamUrl = undefined;
-	if (ownedUpstream) {
-		ownedUpstream.stop();
-		ownedUpstream = undefined;
-		closeUpstreamDb?.();
-		closeUpstreamDb = undefined;
-	}
+	ownedUpstreamProcess?.kill();
+	ownedUpstreamProcess = undefined;
 }
 
 export default function statsZhExtension(pi: ExtensionAPI) {
